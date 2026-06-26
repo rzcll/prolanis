@@ -1,121 +1,796 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SMART DM</title>
-  
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- React & ReactDOM -->
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  
-  <!-- Babel -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script>
-    Babel.registerPreset('react-classic', {
-      presets: [
-        [Babel.availablePresets['react'], { "runtime": "classic" }]
-      ]
-    });
-  </script>
-  
-  <!-- SheetJS -->
-  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
-  
-  <!-- Chart.js untuk Dashboard Grafik -->
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SMART DM</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script>
+    Babel.registerPreset('react-classic', {
+      presets: [
+        [Babel.availablePresets['react'], { "runtime": "classic" }]
+      ]
+    });
+  </script>
+  
+  <!-- SheetJS -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+  
+  <!-- Chart.js untuk Dashboard Grafik -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
-  <!-- Lucide Icons -->
-  <script src="https://unpkg.com/lucide@0.288.0/dist/umd/lucide.min.js"></script>
+  <!-- Lucide Icons (Vanilla JS Version to prevent React CDN conflicts) -->
+  <script src="https://unpkg.com/lucide@0.288.0/dist/umd/lucide.min.js"></script>
 
-  <style>
-    ::-webkit-scrollbar {
-      display: none;
-      width: 0;
-      height: 0;
-    }
-    * {
-      scrollbar-width: none;
-      -ms-overflow-style: none;
-    }
+  <style>
+    /* Menyembunyikan Scrollbar Bawaan (Alat Bantu Naik/Turun) */
+    ::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+    * {
+      scrollbar-width: none; /* Firefox */
+      -ms-overflow-style: none; /* IE and Edge */
+    }
 
-    @keyframes float {
-      0% { transform: translate(0px, 0px) scale(1); }
-      33% { transform: translate(40px, -60px) scale(1.15); }
-      66% { transform: translate(-30px, 30px) scale(0.9); }
-      100% { transform: translate(0px, 0px) scale(1); }
-    }
-    
-    @keyframes menuFloat {
-      0% { transform: translateY(0px) rotate(0deg); }
-      50% { transform: translateY(-6px) rotate(0.5deg); }
-      100% { transform: translateY(0px) rotate(0deg); }
-    }
-    
-    @keyframes panelFloat {
-      0% { transform: translateY(0px); }
-      50% { transform: translateY(-8px); }
-      100% { transform: translateY(0px); }
-    }
+    /* Custom Animations for the Floating Background */
+    @keyframes float {
+      0% { transform: translate(0px, 0px) scale(1); }
+      33% { transform: translate(30px, -50px) scale(1.1); }
+      66% { transform: translate(-20px, 20px) scale(0.9); }
+      100% { transform: translate(0px, 0px) scale(1); }
+    }
+    
+    @keyframes menuFloat {
+      0% { transform: translateY(0px) rotate(0deg); }
+      50% { transform: translateY(-5px) rotate(0.5deg); }
+      100% { transform: translateY(0px) rotate(0deg); }
+    }
+    
+    @keyframes panelFloat {
+      0% { transform: translateY(0px); }
+      50% { transform: translateY(-6px); }
+      100% { transform: translateY(0px); }
+    }
 
-    .floating-menu { animation: menuFloat 6s ease-in-out infinite; }
-    .floating-panel-delay-0 { animation: panelFloat 7s ease-in-out infinite; }
-    .floating-panel-delay-1 { animation: panelFloat 6.5s ease-in-out infinite 1s; }
+    /* Animasi Efek Mengetik */
+    @keyframes typing {
+      from { width: 0; }
+      to { width: 100%; }
+    }
+    @keyframes blink-caret {
+      from, to { border-color: transparent; }
+      50% { border-color: #075985; }
+    }
 
-    .blob {
-      position: fixed;
-      filter: blur(100px);
-      z-index: 0;
-      opacity: 0.65;
-      animation: float 22s infinite ease-in-out;
-      border-radius: 50%;
-    }
-    .blob-1 { top: -10%; left: -10%; width: 55vw; height: 55vw; background: #bae6fd; animation-delay: 0s; }
-    .blob-2 { bottom: -10%; right: -10%; width: 65vw; height: 65vw; background: #bfdbfe; animation-delay: -5s; }
-    
-    .glass-panel {
-      background: rgba(255, 255, 255, 0.45);
-      backdrop-filter: blur(24px);
-      border: 1px solid rgba(255, 255, 255, 0.65);
-      box-shadow: 0 12px 40px 0 rgba(14, 165, 233, 0.08);
-    }
-    
-    .glass-button {
-      background: linear-gradient(135deg, rgba(14, 165, 233, 0.95) 0%, rgba(37, 99, 235, 0.95) 100%);
-      backdrop-filter: blur(12px);
-      border: 1px solid rgba(255, 255, 255, 0.4);
-      box-shadow: 0 8px 20px -4px rgba(14, 165, 233, 0.35);
-      transition: all 0.3s;
-    }
-  </style>
+    .animate-typewriter {
+      display: inline-block;
+      overflow: hidden;
+      white-space: nowrap;
+      border-right: 2px solid #075985;
+      animation: typing 3s steps(50, end) forwards, blink-caret 0.75s step-end infinite;
+    }
+
+    .floating-menu { animation: menuFloat 6s ease-in-out infinite; }
+    .floating-panel-delay-0 { animation: panelFloat 7s ease-in-out infinite; }
+    .floating-panel-delay-1 { animation: panelFloat 6.5s ease-in-out infinite 1s; }
+    .floating-panel-delay-2 { animation: panelFloat 8s ease-in-out infinite 2s; }
+
+    .blob {
+      position: fixed;
+      filter: blur(90px);
+      z-index: 0;
+      opacity: 0.7;
+      animation: float 20s infinite ease-in-out;
+      border-radius: 50%;
+    }
+    /* Mengubah warna blob menjadi nuansa Biru Muda Profesional */
+    .blob-1 { top: -10%; left: -10%; width: 50vw; height: 50vw; background: #bae6fd; animation-delay: 0s; } /* sky-200 */
+    .blob-2 { bottom: -10%; right: -10%; width: 60vw; height: 60vw; background: #bfdbfe; animation-delay: -5s; } /* blue-200 */
+    .blob-3 { top: 30%; left: 30%; width: 40vw; height: 40vw; background: #e0f2fe; animation-delay: -10s; } /* sky-100 */
+    
+    .glass-panel {
+      background: rgba(255, 255, 255, 0.45);
+      backdrop-filter: blur(24px);
+      -webkit-backdrop-filter: blur(24px);
+      border: 1px solid rgba(255, 255, 255, 0.7);
+      box-shadow: 0 8px 32px 0 rgba(14, 165, 233, 0.1);
+    }
+    
+    /* Gradient Utama: Biru Langit ke Biru Professional */
+    .glass-button {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.9) 0%, rgba(37, 99, 235, 0.9) 100%);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.4);
+      box-shadow: 0 10px 25px -5px rgba(14, 165, 233, 0.4);
+    }
+    .glass-button:hover:not(:disabled) {
+      background: linear-gradient(135deg, rgba(2, 132, 199, 0.95) 0%, rgba(29, 78, 216, 0.95) 100%);
+      box-shadow: 0 15px 30px -5px rgba(14, 165, 233, 0.5);
+    }
+
+    .glass-menu {
+      background: rgba(255, 255, 255, 0.25);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.5);
+      box-shadow: 0 4px 30px rgba(0, 0, 0, 0.05);
+    }
+  </style>
 </head>
-<body class="bg-slate-50 min-h-screen text-slate-800 antialiased overflow-x-hidden relative">
-  
-  <div class="blob blob-1"></div>
-  <div class="blob blob-2"></div>
+<body>
+  <div id="root"></div>
 
-  <div id="root"></div>
+  <script type="text/babel" data-presets="env,react-classic">
+    const { useState, useEffect, useRef } = React;
+    
+    // --- CUSTOM LUCIDE ICONS WRAPPER ---
+    const iconMap = {
+      FileUp: 'file-up', Download: 'download', Search: 'search', Trash2: 'trash-2',
+      FileSpreadsheet: 'file-spreadsheet', CheckCircle2: 'check-circle-2', AlertCircle: 'alert-circle',
+      Loader2: 'loader-2', Filter: 'filter', Users: 'users', Activity: 'activity', FolderOpen: 'folder-open',
+      AlertTriangle: 'alert-triangle', ChevronRight: 'chevron-right', RefreshCw: 'refresh-cw',
+      UploadCloud: 'upload-cloud', Database: 'database', Check: 'check', ArrowRight: 'arrow-right',
+      ArrowLeft: 'arrow-left', CloudUpload: 'cloud-upload', BarChart3: 'bar-chart-3', LayoutDashboard: 'layout-dashboard',
+      Copy: 'copy', Home: 'home', User: 'user', Lock: 'lock', LogIn: 'log-in', ExternalLink: 'external-link',
+      FolderUp: 'folder-up', FilePlus: 'file-plus'
+    };
 
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+    const createLucideIcon = (name) => {
+      const kebabName = iconMap[name];
+      return ({ className }) => {
+        const spanRef = React.useRef(null);
+        React.useEffect(() => {
+          if (spanRef.current && window.lucide) {
+            spanRef.current.innerHTML = `<i data-lucide="${kebabName}" class="${className || ''}"></i>`;
+            window.lucide.createIcons({
+              root: spanRef.current
+            });
+          }
+        }, [className]);
+        return <span ref={spanRef} style={{ display: 'contents' }} />;
+      };
+    };
 
-    const App = () => {
-      return (
-        <div class="min-h-screen flex flex-col justify-center items-center p-6 relative z-10">
-          <div class="glass-panel p-10 rounded-[3rem] text-center max-w-lg w-full">
-            <h1 class="text-4xl font-black text-sky-900 mb-4">SMART DM</h1>
-            <p class="text-slate-600 mb-8">Sistem Monitoring Diabetes Terintegrasi. Silakan klik Preview untuk menjalankan aplikasi.</p>
-            <button class="glass-button w-full py-4 rounded-2xl text-white font-bold shadow-xl">Panel Aplikasi</button>
-          </div>
-        </div>
-      );
-    };
+    // Mendaftarkan komponen Icon untuk JSX
+    const FileUp = createLucideIcon('FileUp');
+    const Download = createLucideIcon('Download');
+    const Search = createLucideIcon('Search');
+    const Trash2 = createLucideIcon('Trash2');
+    const FileSpreadsheet = createLucideIcon('FileSpreadsheet');
+    const CheckCircle2 = createLucideIcon('CheckCircle2');
+    const AlertCircle = createLucideIcon('AlertCircle');
+    const Loader2 = createLucideIcon('Loader2');
+    const Filter = createLucideIcon('Filter');
+    const Users = createLucideIcon('Users');
+    const Activity = createLucideIcon('Activity');
+    const FolderOpen = createLucideIcon('FolderOpen');
+    const AlertTriangle = createLucideIcon('AlertTriangle');
+    const ChevronRight = createLucideIcon('ChevronRight');
+    const RefreshCw = createLucideIcon('RefreshCw');
+    const UploadCloud = createLucideIcon('UploadCloud');
+    const Database = createLucideIcon('Database');
+    const Check = createLucideIcon('Check');
+    const ArrowRight = createLucideIcon('ArrowRight');
+    const ArrowLeft = createLucideIcon('ArrowLeft');
+    const CloudUpload = createLucideIcon('CloudUpload');
+    const BarChart3 = createLucideIcon('BarChart3');
+    const LayoutDashboard = createLucideIcon('LayoutDashboard');
+    const Copy = createLucideIcon('Copy');
+    const Home = createLucideIcon('Home');
+    const User = createLucideIcon('User');
+    const Lock = createLucideIcon('Lock');
+    const LogIn = createLucideIcon('LogIn');
+    const ExternalLink = createLucideIcon('ExternalLink');
+    const FolderUp = createLucideIcon('FolderUp');
+    const FilePlus = createLucideIcon('FilePlus');
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
-</body>
-</html>
+    /**
+     * SMART DIABETES MONITORING SYSTEM
+     */
+
+    // Komponen Logo Khusus
+    const DMLogo = ({ className }) => (
+      <svg className={className} viewBox="0 0 100 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M50 0C50 0 10 50 10 80C10 102.091 27.9086 120 50 120C72.0914 120 90 102.091 90 80C90 62 76 38 50 0Z" fill="#D90000"/>
+        <path d="M25 85C25 100 35 108 50 108" stroke="#FFFFFF" strokeWidth="6" strokeLinecap="round" fill="none"/>
+        <g transform="translate(45, 30)">
+          <path d="M22.5 0L45 10V35L22.5 45L0 35V10L22.5 0Z" fill="#F8FAFC" stroke="#E2E8F0" strokeWidth="4" strokeLinejoin="round"/>
+          <path d="M0 10L22.5 20L45 10" stroke="#E2E8F0" strokeWidth="4" strokeLinejoin="round"/>
+          <path d="M22.5 20V45" stroke="#E2E8F0" strokeWidth="4" strokeLinejoin="round"/>
+        </g>
+      </svg>
+    );
+
+    // --- KOMPONEN CHART ---
+    const ChartCard = ({ title, labels, data, color }) => {
+      const canvasRef = useRef(null);
+      const chartInstance = useRef(null);
+
+      useEffect(() => {
+        if (!canvasRef.current || !window.Chart) return;
+        if (chartInstance.current) {
+          chartInstance.current.destroy();
+        }
+
+        const ctx = canvasRef.current.getContext('2d');
+        chartInstance.current = new window.Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: title,
+              data: data,
+              backgroundColor: color + '90',
+              borderColor: color,
+              borderWidth: 2,
+              borderRadius: 6
+            }]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+              legend: { display: false },
+              title: { 
+                display: true, 
+                text: title, 
+                font: { size: 14, family: 'system-ui', weight: 'bold' },
+                color: '#1e293b',
+                padding: { bottom: 20 }
+              }
+            },
+            scales: {
+              y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+              x: { grid: { display: false } }
+            }
+          }
+        });
+
+        return () => {
+          if (chartInstance.current) chartInstance.current.destroy();
+        };
+      }, [labels, data, title, color]);
+
+      return (
+        <div className="glass-panel p-5 md:p-6 rounded-[2rem] border border-white/60 shadow-xl relative h-[300px] flex items-center justify-center hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 bg-white/40">
+          <canvas ref={canvasRef}></canvas>
+        </div>
+      );
+    };
+
+    const App = () => {
+      // Global State
+      const [step, setStep] = useState(1); 
+      const [toast, setToast] = useState({ show: false, msg: '', sub: '', type: 'success' });
+      const [isProcessing, setIsProcessing] = useState(false);
+      const [isSavingToSheet, setIsSavingToSheet] = useState(false);
+      
+      // Dashboard State
+      const [showDashboard, setShowDashboard] = useState(false);
+      const [dashboardData, setDashboardData] = useState(null);
+
+      // Transition States
+      const [isAutoTransitioning, setIsAutoTransitioning] = useState(false);
+
+      // Modal State
+      const [confirmModal, setConfirmModal] = useState({
+        show: false, title: '', message: '', onConfirm: null, type: 'warning'
+      });
+
+      // Data State
+      const [database, setDatabase] = useState([]);
+      const [prolanisData, setProlanisData] = useState([]);
+      const [searchQuery, setSearchQuery] = useState('');
+
+      // --- UTILITIES ---
+      const showToast = (msg, sub = 'Berhasil', type = 'success') => {
+        setToast({ show: true, msg, sub, type });
+        setTimeout(() => setToast({ show: false, msg: '', sub: '', type: 'success' }), 4000);
+      };
+
+      const triggerConfirm = (title, message, onConfirm, type = 'warning') => {
+        setConfirmModal({ show: true, title, message, onConfirm, type });
+      };
+
+      const closeConfirm = () => {
+        setConfirmModal({ ...confirmModal, show: false });
+      };
+
+      const resetAllData = () => {
+        setDatabase([]);
+        setProlanisData([]);
+        setStep(1);
+        setSearchQuery('');
+        setShowDashboard(false);
+        setDashboardData(null);
+      };
+
+      // --- LOGIC: MEMBUAT DASHBOARD SECARA LANGSUNG ---
+      const loadDashboardDirectly = () => {
+        setIsProcessing(true);
+        if (typeof google !== 'undefined' && google.script) {
+          google.script.run
+            .withSuccessHandler((rekapRes) => {
+              setIsProcessing(false);
+              if(rekapRes && rekapRes.labels && rekapRes.values) {
+                setDashboardData(rekapRes);
+                setShowDashboard(true);
+                setStep(3);
+                showToast("Dashboard Terbuka", "Data berhasil diambil dari Google Sheets", "success");
+              } else {
+                showToast("Info Dashboard", "Data grafik rekap belum tersedia.", "warning");
+              }
+            })
+            .withFailureHandler((err) => {
+              setIsProcessing(false);
+              showToast("Error Load Grafik", err.message, "error");
+            })
+            .getRekapData();
+        } else {
+          setTimeout(() => {
+            setIsProcessing(false);
+            setDashboardData({
+              labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des', 'Q1', 'Q2', 'Q3', 'Q4', 'YTD', 'Q1', 'Q2', 'Q3', 'Q4', 'YTD', 'Q1', 'Q2', 'Q3', 'Q4', 'YTD'],
+              values: Array.from({length: 27}, () => Math.floor(Math.random() * 100 + 20)),
+              totalPatients: database.length > 0 ? database.length : 154,
+              currentMonthVisits: database.length > 0 ? database.filter(p => p.months[new Date().getMonth()] !== '-').length : 45
+            });
+            setShowDashboard(true);
+            setStep(3);
+            showToast("Mode Simulasi", "Berhasil memuat Dashboard Simulasi", "success");
+          }, 1000);
+        }
+      };
+
+      // --- LOGIC: FUNGSI RESET DATABASE KE GAS ---
+      const handleResetDatabase = () => {
+        triggerConfirm(
+          'Reset Data Spreadsheet', 
+          'PERINGATAN: Tindakan ini akan menghapus semua isian pada kolom C-R pada Sheet "Data" di Google Spreadsheet Anda. Yakin ingin melanjutkan?', 
+          () => {
+            setIsProcessing(true);
+            if (typeof google !== 'undefined' && google.script) {
+              google.script.run
+                .withSuccessHandler((res) => {
+                  setIsProcessing(false);
+                  resetAllData();
+                  showToast("Berhasil Dikosongkan", res, "success");
+                })
+                .withFailureHandler((err) => {
+                  setIsProcessing(false);
+                  showToast("Error", err.message, "error");
+                })
+                .resetDataSheet();
+            } else {
+              setTimeout(() => {
+                setIsProcessing(false);
+                resetAllData();
+                showToast("Mode Simulasi", "DATABASE BERHASIL DIKOSONGKAN", "success");
+              }, 1500);
+            }
+            closeConfirm();
+          }, 
+          'danger'
+        );
+      };
+
+      // --- LOGIC: FUNGSI SALIN LAPORAN REKAP GAS ---
+      const handleCopyReport = () => {
+        setIsProcessing(true);
+        if (typeof google !== 'undefined' && google.script) {
+          google.script.run
+            .withSuccessHandler((res) => {
+              setIsProcessing(false);
+              if (res === "Error") {
+                showToast("Gagal Menyalin", "Data rekap gagal diambil.", "error");
+                return;
+              }
+              const textArea = document.createElement("textarea");
+              textArea.value = res;
+              document.body.appendChild(textArea);
+              textArea.select();
+              try {
+                document.execCommand('copy');
+                showToast("Berhasil Disalin", "Isian Rekap siap di-paste.", "success");
+              } catch (err) {
+                showToast("Gagal Menyalin", "Browser Anda memblokir fungsi copy otomatis.", "error");
+              }
+              document.body.removeChild(textArea);
+            })
+            .withFailureHandler((err) => {
+              setIsProcessing(false);
+              showToast("Error", err.message, "error");
+            })
+            .copyRekapReport();
+        } else {
+          setTimeout(() => {
+            setIsProcessing(false);
+            showToast("Mode Simulasi", "Menyalin data rekap (Simulasi)...", "success");
+          }, 500);
+        }
+      };
+
+      // --- LOGIC: BUKA LINK PASTE LAPORAN ---
+      const handleOpenPasteLink = () => {
+        setIsProcessing(true);
+        if (typeof google !== 'undefined' && google.script) {
+          google.script.run
+            .withSuccessHandler((link) => {
+              setIsProcessing(false);
+              if (link && String(link).trim().startsWith('http')) {
+                window.open(String(link).trim(), '_blank');
+              } else {
+                showToast("Link Tidak Valid", "Pastikan sel A2 pada sheet Data berisi URL valid (http/https).", "error");
+              }
+            })
+            .withFailureHandler((err) => {
+              setIsProcessing(false);
+              showToast("Error", err.message, "error");
+            })
+            .getPasteLink();
+        } else {
+          setTimeout(() => {
+            setIsProcessing(false);
+            showToast("Mode Simulasi", "Membuka link...", "success");
+            window.open('https://google.com', '_blank');
+          }, 500);
+        }
+      };
+
+      // --- LOGIC 1: MONITORING MATRIKS ---
+      const getMonthIndex = (value) => {
+        if (!value) return -1;
+        const strVal = String(value).trim();
+        const parts = strVal.split(/[-.\/]/);
+        if (parts.length >= 2) {
+          const mPart = parseInt(parts[1], 10);
+          if (mPart >= 1 && mPart <= 12) return mPart - 1;
+        }
+        const cleanDigits = strVal.replace(/[^0-9]/g, '');
+        if (cleanDigits.length === 6) {
+          const mPart = parseInt(cleanDigits.substring(2, 4), 10);
+          if (mPart >= 1 && mPart <= 12) return mPart - 1;
+        }
+        let date;
+        if (value instanceof Date) date = value;
+        else if (typeof value === 'number') date = new Date(Math.round((value - 25569) * 86400 * 1000));
+        else { const parsed = new Date(value); if (!isNaN(parsed.getTime())) date = parsed; }
+        return date && !isNaN(date.getTime()) ? date.getMonth() : -1;
+      };
+
+      const getCellValueDeep = (worksheet, r, c) => {
+        const XLSX = window.XLSX;
+        if (!XLSX) return "";
+        if (worksheet['!merges']) {
+          for (const merge of worksheet['!merges']) {
+            if (r >= merge.s.r && r <= merge.e.r && c >= merge.s.c && c <= merge.e.c) {
+              const firstCell = worksheet[XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c })];
+              return firstCell ? (firstCell.w || firstCell.v || "") : "";
+            }
+          }
+        }
+        const cell = worksheet[XLSX.utils.encode_cell({ r, c })];
+        return cell ? (cell.w || (cell.v !== undefined ? String(cell.v) : "")) : "";
+      };
+
+      // --- LOGIC PROLANIS ---
+      const handleProlanisUpload = async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length || !window.XLSX) return;
+        setIsProcessing(true);
+        let newData = [...prolanisData];
+        let totalNew = 0;
+
+        try {
+          const validFiles = files.filter(file => file.name.match(/\.(xlsx|xls|csv)$/i));
+
+          if (validFiles.length === 0) {
+            showToast('Gagal', 'Tidak ada file Excel (.xlsx/.xls/.csv) yang valid', 'error');
+            return;
+          }
+
+          for (const file of validFiles) {
+            const data = await file.arrayBuffer();
+            const workbook = window.XLSX.read(new Uint8Array(data), { type: 'array', cellDates: true, cellText: true });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            if (!sheet || !sheet['!ref']) continue;
+            const range = window.XLSX.utils.decode_range(sheet['!ref']);
+
+            // Membaca mulai baris ke-14 (indeks array 13)
+            for (let r = 13; r <= range.e.r; r++) {
+              const valC = getCellValueDeep(sheet, r, 2); // Kolom C = Index 2
+              if (!valC || String(valC).trim() === "") continue;
+
+              newData.push({
+                C: valC,
+                E: getCellValueDeep(sheet, r, 4),
+                H: getCellValueDeep(sheet, r, 7),
+                I: getCellValueDeep(sheet, r, 8),
+                J: getCellValueDeep(sheet, r, 9),
+                K: getCellValueDeep(sheet, r, 10),
+                L: getCellValueDeep(sheet, r, 11),
+                M: getCellValueDeep(sheet, r, 12),
+                N: getCellValueDeep(sheet, r, 13),
+                O: getCellValueDeep(sheet, r, 14),
+                X: getCellValueDeep(sheet, r, 23),
+                AK: getCellValueDeep(sheet, r, 36)
+              });
+              totalNew++;
+            }
+          }
+          setProlanisData(newData);
+          showToast('Data Prolanis Diperbarui', `${totalNew} baris data berhasil dibaca`, 'success');
+        } catch (err) {
+          showToast('Gagal memproses file', err.message, 'error');
+        } finally {
+          setIsProcessing(false);
+          e.target.value = null; // Reset input
+        }
+      };
+
+      const saveProlanisToGoogleSheets = () => {
+        if (prolanisData.length === 0) return;
+        setIsSavingToSheet(true);
+
+        const dataToSave = prolanisData.map(p => [
+          p.C, p.E, p.I, p.J, p.K, p.L, p.M, p.N, p.O, p.X, p.AK, p.H
+        ]);
+
+        if (typeof google !== 'undefined' && google.script) {
+          google.script.run
+            .withSuccessHandler((res) => {
+              setIsSavingToSheet(false);
+              if(res === "SUCCESS") {
+                showToast("Berhasil Disimpan", "Data Prolanis tersimpan di sheet Database", "success");
+              } else {
+                showToast("Gagal Disimpan", res, "error");
+              }
+            })
+            .withFailureHandler((err) => {
+              setIsSavingToSheet(false);
+              showToast("Error", err.message, "error");
+            })
+            .saveProlanisToSheet(dataToSave);
+        } else {
+          setTimeout(() => {
+            setIsSavingToSheet(false);
+            showToast("Mode Simulasi", "Data Prolanis berhasil disimpan ke sheet Database", "success");
+          }, 1500);
+        }
+      };
+
+      const handleDownloadProlanis = () => {
+        if (prolanisData.length === 0) {
+          showToast('Gagal Ekspor', 'Tidak ada data Prolanis untuk diunduh', 'error');
+          return;
+        }
+
+        const XLSX = window.XLSX;
+        const wb = XLSX.utils.book_new();
+
+        // Mengelompokkan data berdasarkan nilai pada Kolom M
+        const groupedData = {};
+        
+        prolanisData.forEach(row => {
+          // Mengambil nilai M sebagai nama sheet (default jika kosong)
+          let sheetName = String(row.M || 'Tanpa_Kategori').trim();
+          
+          // Membersihkan nama sheet dari karakter yang tidak diizinkan oleh Excel
+          sheetName = sheetName.replace(/[\\\/\?\*\[\]\:]/g, '_').substring(0, 31);
+          if (!sheetName) sheetName = 'Sheet1';
+
+          // Membuat array baru untuk sheet ini jika belum ada beserta headernya
+          if (!groupedData[sheetName]) {
+            groupedData[sheetName] = [];
+            groupedData[sheetName].push([
+              'Kolom C', 'Kolom E', 'Kolom H', 'Kolom I', 'Kolom J', 
+              'Kolom K', 'Kolom L', 'Kolom M', 'Kolom N', 'Kolom O', 
+              'Kolom X', 'Kolom AK'
+            ]);
+          }
+
+          // Memasukkan data ke dalam sheet yang sesuai
+          groupedData[sheetName].push([
+            row.C, row.E, row.H, row.I, row.J, 
+            row.K, row.L, row.M, row.N, row.O, 
+            row.X, row.AK
+          ]);
+        });
+
+        // Memasukkan setiap kelompok data sebagai worksheet baru
+        Object.keys(groupedData).forEach(sheetName => {
+          const ws = XLSX.utils.aoa_to_sheet(groupedData[sheetName]);
+          XLSX.utils.book_append_sheet(wb, ws, sheetName);
+        });
+
+        // Memicu unduhan file
+        XLSX.writeFile(wb, `Data_Prolanis_Split_by_M_${new Date().getFullYear()}.xlsx`);
+        showToast('Berhasil', 'Data Prolanis berhasil diunduh per kategori M', 'success');
+      };
+
+      const handleMonitoringUpload = async (e) => {
+        const files = Array.from(e.target.files);
+        if (!files.length || !window.XLSX) return;
+        setIsProcessing(true);
+        let updatedDatabase = [...database];
+        let totalNew = 0;
+        let totalUpdated = 0;
+
+        try {
+          const validFiles = files.filter(file => {
+            const isExcel = file.name.match(/\.(xlsx|xls|csv)$/i);
+            const isLaporan = file.name.toLowerCase().includes('laporan'); 
+            return isExcel && isLaporan;
+          });
+
+          if (validFiles.length === 0) {
+            showToast('Gagal', 'Tidak ada file "Laporan" yang valid di dalam folder (.xlsx/.xls/.csv)', 'error');
+            return;
+          }
+
+          for (const file of validFiles) {
+            const data = await file.arrayBuffer();
+            const workbook = window.XLSX.read(new Uint8Array(data), { type: 'array', cellDates: true, cellText: true });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            if (!sheet || !sheet['!ref']) continue;
+            const range = window.XLSX.utils.decode_range(sheet['!ref']);
+
+            for (let r = 10; r <= range.e.r; r += 2) {
+              const rawB = getCellValueDeep(sheet, r, 1);
+              const rawF = getCellValueDeep(sheet, r, 5) || getCellValueDeep(sheet, r, 4) || getCellValueDeep(sheet, r, 6);
+              const rawV = getCellValueDeep(sheet, r, 21);
+              
+              if (!rawF || String(rawF).trim() === "-" || String(rawF).trim() === "Data_Pasien") continue;
+              
+              const monthIdx = getMonthIndex(rawB);
+              const patientId = rawF;
+              const existingIndex = updatedDatabase.findIndex(p => String(p.id) === String(patientId));
+
+              if (existingIndex !== -1) {
+                if (monthIdx !== -1) updatedDatabase[existingIndex].months[monthIdx] = rawV || "V";
+                totalUpdated++;
+              } else {
+                const newPatient = {
+                  id: patientId,
+                  name: rawF,
+                  info: file.name,
+                  months: new Array(12).fill('-'),
+                  diagnosaDate: '-' 
+                };
+                if (monthIdx !== -1) newPatient.months[monthIdx] = rawV || "V";
+                updatedDatabase.push(newPatient);
+                totalNew++;
+              }
+            }
+          }
+          setDatabase(updatedDatabase);
+          showToast('Matriks Berhasil Diperbarui', `${totalNew} Baru, ${totalUpdated} Diperbarui`, 'success');
+          
+          if (step === 1 && (totalNew > 0 || totalUpdated > 0)) {
+            setIsAutoTransitioning(true);
+            setTimeout(() => {
+              showToast('Transisi Otomatis', 'Menyiapkan dashboard ringkasan...', 'success');
+            }, 500);
+            setTimeout(() => {
+              setStep(3); 
+              setIsAutoTransitioning(false);
+            }, 2500);
+          }
+
+        } catch (err) {
+          showToast('Gagal memproses file', 'Kesalahan format', 'error');
+        } finally {
+          setIsProcessing(false);
+          e.target.value = null;
+        }
+      };
+
+      const getTodayString = () => {
+        const today = new Date();
+        const day = String(today.getDate()).padStart(2, '0');
+        const month = String(today.getMonth() + 1).padStart(2, '0');
+        const year = today.getFullYear();
+        return `${day}/${month}/${year}`;
+      };
+
+      // --- LOGIC 3: EXPORT EXCEL LOKAL ---
+      const exportFinalExcel = () => {
+        const XLSX = window.XLSX;
+        if (database.length === 0) {
+          showToast('Gagal Ekspor', 'Tidak ada data untuk diekspor', 'error');
+          return;
+        }
+        const monthHeaders = ['JAN', 'FEB', 'MAR', 'APR', 'MEI', 'JUN', 'JUL', 'AGU', 'SEP', 'OKT', 'NOV', 'DES'];
+        const worksheetData = [[], ["", "", "ID/NAMA", "TGL DIAGNOSA", "", "", ...monthHeaders]];
+        
+        database.forEach(p => {
+          const cleanedMonths = p.months.map(m => m === '-' ? '' : m);
+          worksheetData.push(["", "", p.name, p.diagnosaDate, "", "", ...cleanedMonths]);
+        });
+        
+        const ws = XLSX.utils.aoa_to_sheet(worksheetData);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Hasil Final DM');
+        XLSX.writeFile(wb, `Laporan_Unified_DM_${new Date().getFullYear()}.xlsx`);
+      };
+
+      // --- LOGIC 4: SAVE TO GOOGLE APPS SCRIPT BACKEND & LOAD DASHBOARD ---
+      const saveToGoogleSheets = () => {
+        if (database.length === 0) return;
+        setIsSavingToSheet(true);
+
+        const dataC = database.map(p => [p.name]); 
+        const dataD = database.map(p => [p.diagnosaDate]); 
+        const dataGR = database.map(p => p.months.map(m => m === '-' ? '' : m)); 
+
+        if (typeof google !== 'undefined' && google.script) {
+          google.script.run
+            .withSuccessHandler((res) => {
+              if(res === "SUCCESS") {
+                showToast("Berhasil Disimpan", "Menyiapkan Dashboard Grafik...", "success");
+                
+                google.script.run
+                  .withSuccessHandler((rekapRes) => {
+                    setIsSavingToSheet(false);
+                    if(rekapRes && rekapRes.labels && rekapRes.values) {
+                      setDashboardData(rekapRes);
+                      setShowDashboard(true);
+                    } else {
+                      showToast("Info Dashboard", "Data grafik rekap belum tersedia.", "warning");
+                    }
+                  })
+                  .withFailureHandler((err) => {
+                    setIsSavingToSheet(false);
+                    showToast("Error Load Grafik", err.message, "error");
+                  })
+                  .getRekapData();
+
+              } else {
+                setIsSavingToSheet(false);
+                showToast("Gagal Disimpan", res, "error");
+              }
+            })
+            .withFailureHandler((err) => {
+              setIsSavingToSheet(false);
+              showToast("Error", err.message, "error");
+            })
+            .saveDataToSheet(dataC, dataD, dataGR);
+        } else {
+          setTimeout(() => {
+            setIsSavingToSheet(false);
+            setDashboardData({
+              labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des', 'Q1', 'Q2', 'Q3', 'Q4', 'YTD'],
+              values: Array.from({length: 17}, () => Math.floor(Math.random() * 100 + 20)),
+              totalPatients: database.length,
+              currentMonthVisits: database.filter(p => p.months[new Date().getMonth()] !== '-').length
+            });
+            setShowDashboard(true);
+            showToast("Mode Simulasi", "Berhasil Simpan & Memuat Dashboard Simulasi", "success");
+          }, 1500);
+        }
+      };
+
+      const filteredData = database.filter(p => 
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        String(p.id).toLowerCase().includes(searchQuery.toLowerCase())
+      );
+
+      // Transition CSS Classes
+      const getTransitionClass = (targetStep) => {
+        if (step === targetStep) {
+          return 'opacity-100 translate-x-0 scale-100 blur-none relative z-10 pointer-events-auto transition-all duration-[800ms] ease-[cubic-bezier(0.22,1,0.36,1)]';
+        }
+        if (step > targetStep) {
+          return 'opacity-0 -translate-x-20
