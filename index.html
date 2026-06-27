@@ -190,24 +190,39 @@
                 const workbook = window.XLSX.read(data, { type: 'array', cellDates: true, cellText: true });
                 const sheet = workbook.Sheets[workbook.SheetNames[0]];
                 const range = window.XLSX.utils.decode_range(sheet['!ref']);
-                const results = [];
+                
+                const mergedProlanisData = new Map();
+                
                 for (let r = 13; r <= range.e.r; r++) {
-                    results.push({
-                        'Nama': getCellValue(sheet, r, 2), 
-                        'NIK': getCellValue(sheet, r, 4), 
-                        'No Tlp': getCellValue(sheet, r, 7),
-                        'Jenis Kelamin': getCellValue(sheet, r, 8), 
-                        'Alamat': getCellValue(sheet, r, 9), 
-                        'RT/RW': getCellValue(sheet, r, 10),
-                        'Kecamatan': getCellValue(sheet, r, 11), 
-                        'Kelurahan': getCellValue(sheet, r, 12), 
-                        'Tgl Lahir': getCellValue(sheet, r, 13),
-                        'Usia': getCellValue(sheet, r, 14), 
-                        'No BPJS': getCellValue(sheet, r, 23), 
-                        'Peserta Prolanis': getCellValue(sheet, r, 36)
-                    });
+                    const nik = getCellValue(sheet, r, 4); // Kolom E (NIK)
+                    const nama = getCellValue(sheet, r, 2); // Kolom C (Nama)
+                    const bpjs = getCellValue(sheet, r, 23); // Kolom X (No BPJS)
+                    
+                    // Lewati baris jika benar-benar kosong
+                    if (!nik && !nama && !bpjs) continue;
+                    
+                    // Gunakan NIK sebagai Key. Jika NIK kosong, gunakan index baris agar tetap terbaca.
+                    const nikKey = nik ? String(nik).trim() : `NO_NIK_${r}`;
+                    
+                    // Hanya masukkan data jika NIK tersebut belum ada di dalam Map
+                    if (!mergedProlanisData.has(nikKey)) {
+                        mergedProlanisData.set(nikKey, {
+                            'Nama': nama, 
+                            'NIK': nik, 
+                            'No Tlp': getCellValue(sheet, r, 7),
+                            'Jenis Kelamin': getCellValue(sheet, r, 8), 
+                            'Alamat': getCellValue(sheet, r, 9), 
+                            'RT/RW': getCellValue(sheet, r, 10),
+                            'Kecamatan': getCellValue(sheet, r, 11), 
+                            'Kelurahan': getCellValue(sheet, r, 12), 
+                            'Tgl Lahir': getCellValue(sheet, r, 13),
+                            'Usia': getCellValue(sheet, r, 14), 
+                            'No BPJS': bpjs, 
+                            'Peserta Prolanis': getCellValue(sheet, r, 36)
+                        });
+                    }
                 }
-                resolve({ fileName: file.name, data: results });
+                resolve({ fileName: file.name, data: Array.from(mergedProlanisData.values()) });
               };
               reader.readAsArrayBuffer(file);
             });
