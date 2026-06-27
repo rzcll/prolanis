@@ -1,403 +1,464 @@
-<!DOCTYPE html>
-<html lang="id">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>SMART DM - Sistem Monitoring</title>
-  
-  <!-- Tailwind CSS -->
-  <script src="https://cdn.tailwindcss.com"></script>
-  
-  <!-- Import Map untuk React dan Lucide Icons -->
-  <script type="importmap">
-    {
-      "imports": {
-        "react": "https://esm.sh/react@18.2.0",
-        "react/jsx-runtime": "https://esm.sh/react@18.2.0/jsx-runtime",
-        "react-dom/client": "https://esm.sh/react-dom@18.2.0/client",
-        "lucide-react": "https://esm.sh/lucide-react@0.263.1"
+import React, { useState, useEffect } from 'react';
+import { 
+  Upload, FileSpreadsheet, Download, FileText, FolderOpen, 
+  Database, Activity, ChevronRight, Loader2, Info, LayoutDashboard, CheckCircle2
+} from 'lucide-react';
+
+const App = () => {
+  const [labFilesData, setLabFilesData] = useState([]);
+  const [prolanisFilesData, setProlanisFilesData] = useState([]);
+  const [filteredLabData, setFilteredLabData] = useState([]); // State untuk menyimpan data lab yang sudah difilter
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [xlsxLoaded, setXlsxLoaded] = useState(false);
+  const [activeTab, setActiveTab] = useState('LAB'); 
+
+  const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+  useEffect(() => {
+    const script = document.createElement('script');
+    script.src = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
+    script.async = true;
+    script.onload = () => setXlsxLoaded(true);
+    document.head.appendChild(script);
+  }, []);
+
+  // Logika Filter Data berdasarkan 8 digit BPJS
+  useEffect(() => {
+    if (labFilesData.length > 0 && prolanisFilesData.length > 0) {
+      // 1. Kumpulkan semua 8 digit terakhir BPJS dari data Prolanis (Kolom X)
+      const prolanisBPJSSuffixes = new Set();
+      prolanisFilesData.forEach(file => {
+        file.data.forEach(row => {
+          // Sesuaikan pengambilan data BPJS menggunakan 'No BPJS' sebagai nama key baru
+          const bpjs = String(row['No BPJS'] || "").replace(/[^0-9a-zA-Z]/g, '');
+          if (bpjs.length >= 8) {
+            prolanisBPJSSuffixes.add(bpjs.slice(-8));
+          }
+        });
+      });
+
+      // 2. Filter data Lab berdasarkan kecocokan 8 digit terakhir (Kolom Data_R)
+      const newFilteredLab = labFilesData.map(file => {
+        return {
+          ...file,
+          data: file.data.filter(row => {
+            const labBpjs = String(row.Data_R || "").replace(/[^0-9a-zA-Z]/g, '');
+            if (labBpjs.length >= 8) {
+              return prolanisBPJSSuffixes.has(labBpjs.slice(-8));
+            }
+            return false;
+          })
+        };
+      }).filter(file => file.data.length > 0); // Buang file jika setelah difilter datanya kosong
+
+      setFilteredLabData(newFilteredLab);
+    } else {
+      setFilteredLabData(labFilesData);
+    }
+  }, [labFilesData, prolanisFilesData]);
+
+  const getMonthName = (value) => {
+    if (!value) return "-";
+    let monthIndex = -1;
+    const strVal = String(value).trim();
+    const parts = strVal.split(/[-./]/);
+    if (parts.length >= 2) {
+      const mPart = parseInt(parts[1], 10);
+      if (mPart >= 1 && mPart <= 12) monthIndex = mPart - 1;
+    }
+    if (monthIndex === -1) {
+      const cleanDigits = strVal.replace(/[^0-9]/g, '');
+      if (cleanDigits.length === 6) {
+        const mPart = parseInt(cleanDigits.substring(2, 4), 10);
+        if (mPart >= 1 && mPart <= 12) monthIndex = mPart - 1;
       }
     }
-  </script>
-  
-  <!-- Babel compiler untuk menjalankan JSX di browser -->
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-</head>
-<body class="bg-[#0f172a]">
-  <div id="root"></div>
+    if (monthIndex === -1) {
+      let date;
+      if (value instanceof Date) date = value;
+      else if (typeof value === 'number') date = new Date(Math.round((value - 25569) * 86400 * 1000));
+      else { const parsed = new Date(value); if (!isNaN(parsed.getTime())) date = parsed; }
+      if (date && !isNaN(date.getTime())) monthIndex = date.getMonth();
+    }
+    return monthIndex >= 0 && monthIndex <= 11 ? months[monthIndex] : strVal || "-";
+  };
 
-  <script type="text/babel" data-type="module">
-    import React, { useState, useEffect } from 'react';
-    import { createRoot } from 'react-dom/client';
-    import { Upload, FileSpreadsheet, Download, FileText, ListFilter, Sparkles, ShieldCheck, Zap, Trash2, Files, Save } from 'lucide-react';
-
-    // URL WEB APP GOOGLE APPS SCRIPT 
-    const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGAEysRr9D4XPyANMMkqB4uLy-YfIzHfNsDLGYXkkqf8cxUqusFqhz7tyUmubllE_H/exec'; 
-
-    const App = () => {
-      const [labFilesData, setLabFilesData] = useState([]);
-      const [prolanisFilesData, setProlanisFilesData] = useState([]);
-      const [isProcessing, setIsProcessing] = useState(false);
-      const [isSaving, setIsSaving] = useState(false);
-      const [xlsxLoaded, setXlsxLoaded] = useState(false);
-      const [activeTab, setActiveTab] = useState('LAB'); 
-
-      const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
-
-      useEffect(() => {
-        const script = document.createElement('script');
-        script.src = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
-        script.async = true;
-        script.onload = () => setXlsxLoaded(true);
-        document.head.appendChild(script);
-      }, []);
-
-      const getMonthName = (value) => {
-        if (!value) return "-";
-        let monthIndex = -1;
-        const strVal = String(value).trim();
-        const parts = strVal.split(/[-./]/);
-        if (parts.length >= 2) {
-          const mPart = parseInt(parts[1], 10);
-          if (mPart >= 1 && mPart <= 12) monthIndex = mPart - 1;
+  const getCellValue = (worksheet, r, c) => {
+    const XLSX = window.XLSX;
+    if (!XLSX) return "";
+    if (worksheet['!merges']) {
+      for (const merge of worksheet['!merges']) {
+        if (r >= merge.s.r && r <= merge.e.r && c >= merge.s.c && c <= merge.e.c) {
+          const firstCell = worksheet[XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c })];
+          return firstCell ? (firstCell.w || firstCell.v || "") : "";
         }
-        if (monthIndex === -1) {
-          const cleanDigits = strVal.replace(/[^0-9]/g, '');
-          if (cleanDigits.length === 6) {
-            const mPart = parseInt(cleanDigits.substring(2, 4), 10);
-            if (mPart >= 1 && mPart <= 12) monthIndex = mPart - 1;
-          }
-        }
-        if (monthIndex === -1) {
-          let date;
-          if (value instanceof Date) date = value;
-          else if (typeof value === 'number') date = new Date(Math.round((value - 25569) * 86400 * 1000));
-          else { const parsed = new Date(value); if (!isNaN(parsed.getTime())) date = parsed; }
-          if (date && !isNaN(date.getTime())) monthIndex = date.getMonth();
-        }
-        return monthIndex >= 0 && monthIndex <= 11 ? months[monthIndex] : strVal || "-";
-      };
+      }
+    }
+    const cell = worksheet[XLSX.utils.encode_cell({ r, c })];
+    return cell ? (cell.w || (cell.v !== undefined ? String(cell.v) : "")) : "";
+  };
 
-      const getCellValue = (worksheet, r, c) => {
-        const XLSX = window.XLSX;
-        if (!XLSX) return "";
-        if (worksheet['!merges']) {
-          for (const merge of worksheet['!merges']) {
-            if (r >= merge.s.r && r <= merge.e.r && c >= merge.s.c && c <= merge.e.c) {
-              const firstCell = worksheet[XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c })];
-              return firstCell ? (firstCell.w || firstCell.v || "") : "";
+  const processLabFile = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = window.XLSX.read(data, { type: 'array', cellDates: true, cellText: true });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const range = window.XLSX.utils.decode_range(sheet['!ref']);
+        
+        // Gunakan Map untuk mengelompokkan (deduplikasi) berdasarkan Nomor BPJS
+        const mergedData = new Map();
+
+        for (let r = 10; r <= range.e.r; r += 2) {
+          const rawB = getCellValue(sheet, r, 1);
+          let rawF = getCellValue(sheet, r, 5) || getCellValue(sheet, r, 4) || getCellValue(sheet, r, 6);
+          const rawV = getCellValue(sheet, r, 21);
+          const rawD = getCellValue(sheet, r, 3);
+          const rawR = getCellValue(sheet, r, 17);
+
+          if (rawB || rawF || rawV) {
+            const bulan = getMonthName(rawB);
+            // Jadikan BPJS sebagai Key. Jika kosong, gunakan index baris agar tidak salah gabung
+            const bpjsKey = rawR ? String(rawR).trim() : `NO_BPJS_${r}`;
+
+            if (!mergedData.has(bpjsKey)) {
+              // Jika data belum ada di Map, buat baris baru
+              const newRow = {
+                'Baris': r + 1,
+                'Data_Pasien': rawF || "-",
+                'Data_D': rawD || "-",
+                'Data_R': rawR || "-"
+              };
+              // Inisialisasi setiap bulan dengan string kosong
+              months.forEach(m => newRow[m] = ""); 
+              mergedData.set(bpjsKey, newRow);
+            }
+
+            const record = mergedData.get(bpjsKey);
+            const status = rawV || "-";
+
+            // Jika status valid, masukkan ke kolom bulan yang sesuai
+            if (months.includes(bulan) && status !== "-") {
+              record[bulan] = status;
             }
           }
         }
-        const cell = worksheet[XLSX.utils.encode_cell({ r, c })];
-        return cell ? (cell.w || (cell.v !== undefined ? String(cell.v) : "")) : "";
+        resolve({ fileName: file.name, data: Array.from(mergedData.values()) });
       };
+      reader.readAsArrayBuffer(file);
+    });
+  };
 
-      const processLabFile = (file) => {
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const data = new Uint8Array(e.target.result);
-            const workbook = window.XLSX.read(data, { type: 'array', cellDates: true, cellText: true });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const range = window.XLSX.utils.decode_range(sheet['!ref']);
-            
-            // Menggunakan objek (hash map) untuk menghapus duplikat berdasarkan No BPJS
-            const grouped = {};
-            
-            for (let r = 10; r <= range.e.r; r += 2) {
-              const rawB = getCellValue(sheet, r, 1);
-              let rawF = getCellValue(sheet, r, 5) || getCellValue(sheet, r, 4) || getCellValue(sheet, r, 6);
-              const rawV = getCellValue(sheet, r, 21);
-              const rawD = getCellValue(sheet, r, 3);
-              const rawR = getCellValue(sheet, r, 17);
-              
-              if (rawB || rawF || rawV) {
-                // Gunakan No BPJS sebagai Key utama, jika kosong gunakan NIK atau Baris
-                const bpjsKey = String(rawR && String(rawR).trim() !== "" ? rawR : (rawF || `row_${r}`)).trim();
-                
-                if (!grouped[bpjsKey]) {
-                   grouped[bpjsKey] = { 
-                     'Baris': r + 1, 
-                     'Data_Pasien': rawF || "-", 
-                     'Data_D': rawD || "-", 
-                     'Data_R': rawR || "-", 
-                     'Statuses': {} 
-                   };
-                }
-                
-                const bulanName = getMonthName(rawB);
-                if (bulanName !== "-") {
-                   // Menyatukan data capaian bulanan ke dalam satu record No BPJS
-                   grouped[bpjsKey].Statuses[bulanName] = rawV || "-";
-                }
-              }
-            }
-            resolve({ fileName: file.name, data: Object.values(grouped) });
-          };
-          reader.readAsArrayBuffer(file);
-        });
+  const processProlanisFile = (file) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const data = new Uint8Array(e.target.result);
+        const workbook = window.XLSX.read(data, { type: 'array', cellDates: true, cellText: true });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const range = window.XLSX.utils.decode_range(sheet['!ref']);
+        const results = [];
+        for (let r = 13; r <= range.e.r; r++) {
+            results.push({
+                'Nama': getCellValue(sheet, r, 2), 
+                'NIK': getCellValue(sheet, r, 4), 
+                'No Tlp': getCellValue(sheet, r, 7),
+                'Jenis Kelamin': getCellValue(sheet, r, 8), 
+                'Alamat': getCellValue(sheet, r, 9), 
+                'RT/RW': getCellValue(sheet, r, 10),
+                'Kecamatan': getCellValue(sheet, r, 11), 
+                'Kelurahan': getCellValue(sheet, r, 12), 
+                'Tgl Lahir': getCellValue(sheet, r, 13),
+                'Usia': getCellValue(sheet, r, 14), 
+                'No BPJS': getCellValue(sheet, r, 23), 
+                'Peserta Prolanis': getCellValue(sheet, r, 36)
+            });
+        }
+        resolve({ fileName: file.name, data: results });
       };
+      reader.readAsArrayBuffer(file);
+    });
+  };
 
-      const processProlanisFile = (file) => {
-        return new Promise((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => {
-            const data = new Uint8Array(e.target.result);
-            const workbook = window.XLSX.read(data, { type: 'array', cellDates: true, cellText: true });
-            const sheet = workbook.Sheets[workbook.SheetNames[0]];
-            const range = window.XLSX.utils.decode_range(sheet['!ref']);
-            const results = [];
-            for (let r = 13; r <= range.e.r; r++) {
-                results.push({
-                    C: getCellValue(sheet, r, 2), E: getCellValue(sheet, r, 4), H: getCellValue(sheet, r, 7),
-                    I: getCellValue(sheet, r, 8), J: getCellValue(sheet, r, 9), K: getCellValue(sheet, r, 10),
-                    L: getCellValue(sheet, r, 11), M: getCellValue(sheet, r, 12), N: getCellValue(sheet, r, 13),
-                    O: getCellValue(sheet, r, 14), X: getCellValue(sheet, r, 23), AK: getCellValue(sheet, r, 36)
-                });
-            }
-            resolve({ fileName: file.name, data: results });
-          };
-          reader.readAsArrayBuffer(file);
-        });
-      };
+  const handleUpload = async (e, type) => {
+    const files = Array.from(e.target.files);
+    if (!files.length) return;
+    setIsProcessing(true);
+    try {
+      const processor = type === 'LAB' ? processLabFile : processProlanisFile;
+      const results = await Promise.all(files.filter(f => f.name.match(/\.(xlsx|xls|csv)$/i)).map(processor));
+      
+      if (type === 'LAB') {
+        setLabFilesData(prev => [...prev, ...results]);
+        setActiveTab('PROLANIS'); // Pindah otomatis ke tahap 2
+      } else {
+        setProlanisFilesData(prev => [...prev, ...results]);
+        setActiveTab('DASHBOARD'); // Pindah otomatis ke dashboard
+      }
+    } catch (err) { console.error(err); } finally { setIsProcessing(false); }
+  };
 
-      const handleUpload = async (e, type) => {
-        const files = Array.from(e.target.files);
-        if (!files.length) return;
-        setIsProcessing(true);
-        try {
-          const processor = type === 'LAB' ? processLabFile : processProlanisFile;
-          const results = await Promise.all(files.filter(f => f.name.match(/\.(xlsx|xls|csv)$/i)).map(processor));
-          if (type === 'LAB') setLabFilesData(prev => [...prev, ...results]);
-          else setProlanisFilesData(prev => [...prev, ...results]);
-        } catch (err) { console.error(err); } finally { setIsProcessing(false); }
-      };
+  const downloadFile = (data, type) => {
+    const XLSX = window.XLSX;
+    if (!XLSX) return;
+    const wb = XLSX.utils.book_new();
 
-      const downloadFile = (data, type) => {
-        const XLSX = window.XLSX;
-        if (!XLSX) return;
+    if(type === 'LAB'){
         const allRows = data.flatMap(f => f.data);
-        let excelData = [];
-        
-        if(type === 'LAB'){
-            // Lakukan penggabungan global memastikan hanya ada 1 data per No BPJS 
-            // untuk seluruh file yang diunggah
-            const mergedGlobal = {};
-            allRows.forEach(row => {
-                const key = String(row.Data_R !== "-" ? row.Data_R : row.Data_Pasien).trim();
-                if (!mergedGlobal[key]) {
-                    mergedGlobal[key] = { ...row, Statuses: { ...row.Statuses } };
-                } else {
-                    Object.assign(mergedGlobal[key].Statuses, row.Statuses);
-                }
-            });
-            
-            excelData = Object.values(mergedGlobal).map(row => {
-                const outputRow = { 'Baris': row.Baris, 'NIK': row.Data_Pasien, 'Nama Pasien': row.Data_D, 'No BPJS': row.Data_R };
-                months.forEach(m => outputRow[m] = row.Statuses[m] || "");
-                return outputRow;
-            });
-        } else {
-            excelData = allRows;
-        }
-        
-        const wb = XLSX.utils.book_new();
+        const excelData = allRows.map(row => {
+            const outputRow = { 'Baris': row.Baris, 'Nama Pasien': row.Data_Pasien, 'Data_D': row.Data_D, 'Data_R': row.Data_R };
+            // Loop masing-masing bulan untuk mengambil data gabungannya
+            months.forEach(m => outputRow[m] = row[m] || "");
+            return outputRow;
+        });
         const ws = XLSX.utils.json_to_sheet(excelData, { origin: "A2" });
-        XLSX.utils.book_append_sheet(wb, ws, "Rekap");
-        XLSX.writeFile(wb, `file DM step 1.xlsx`);
-      };
+        XLSX.utils.book_append_sheet(wb, ws, "Rekap Lab Terfilter");
+        XLSX.writeFile(wb, `Rekap_Lab_Filter_Otomatis.xlsx`);
+    } else {
+        const allRows = data.flatMap(f => f.data);
+        // Grup data berdasarkan kolom Kelurahan (sebelumnya bernama M)
+        const groups = allRows.reduce((acc, row) => {
+            const key = row['Kelurahan'] ? String(row['Kelurahan']) : "Tanpa_Kategori";
+            if (!acc[key]) acc[key] = [];
+            acc[key].push(row);
+            return acc;
+        }, {});
+        
+        Object.keys(groups).forEach(key => {
+            const ws = XLSX.utils.json_to_sheet(groups[key]);
+            XLSX.utils.book_append_sheet(wb, ws, key.substring(0, 31)); // Nama sheet max 31 karakter
+        });
+        XLSX.writeFile(wb, `Rekap_Data_Prolanis.xlsx`);
+    }
+  };
 
-      const saveToGoogleSheets = async (type) => {
-        if(SCRIPT_URL === 'URL_WEB_APP_GOOGLE_SCRIPT_ANDA_DI_SINI' || SCRIPT_URL === '') {
-          alert('Mohon masukkan URL Google Apps Script Anda terlebih dahulu di variabel SCRIPT_URL pada kode aplikasi.');
-          return;
-        }
+  const getTotalRows = (dataArray) => dataArray.reduce((acc, file) => acc + file.data.length, 0);
 
-        const dataToSave = type === 'LAB' ? labFilesData : prolanisFilesData;
-        if (dataToSave.length === 0) return;
+  return (
+    <div className="min-h-screen bg-[#020617] text-slate-200 font-sans p-4 md:p-8 selection:bg-indigo-500/30">
+      <div className="max-w-7xl mx-auto space-y-8">
+        
+        {/* HEADER SECTION */}
+        <header className="relative overflow-hidden bg-slate-900 border border-slate-800 p-8 md:p-10 rounded-[2.5rem] flex flex-col md:flex-row items-center justify-between gap-8 shadow-2xl">
+          <div className="absolute -top-24 -right-24 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute -bottom-24 -left-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        if (type === 'LAB' && prolanisFilesData.length === 0) {
-          alert('Mohon unggah data Prolanis terlebih dahulu untuk mencocokkan No BPJS.');
-          return;
-        }
-
-        setIsSaving(true);
-        try {
-          const allRows = dataToSave.flatMap(f => f.data);
-          let formattedData = [];
-          
-          if (type === 'LAB') {
-            const validBpjsSet = new Set();
-            prolanisFilesData.forEach(f => {
-                f.data.forEach(r => {
-                    if (r.K) validBpjsSet.add(String(r.K).trim());
-                });
-            });
-
-            const mergedGlobal = {};
-            allRows.forEach(row => {
-                const key = String(row.Data_R !== "-" ? row.Data_R : row.Data_Pasien).trim();
-                if (!mergedGlobal[key]) {
-                    mergedGlobal[key] = { ...row, Statuses: { ...row.Statuses } };
-                } else {
-                    Object.assign(mergedGlobal[key].Statuses, row.Statuses);
-                }
-            });
-            
-            formattedData = Object.values(mergedGlobal)
-                .filter(row => validBpjsSet.has(String(row.Data_R).trim()))
-                .map(row => {
-                const outputRow = { 'Baris': row.Baris, 'NIK': row.Data_Pasien, 'Nama Pasien': row.Data_D, 'No BPJS': row.Data_R };
-                months.forEach(m => outputRow[m] = row.Statuses[m] || "");
-                return outputRow;
-            });
-
-            if (formattedData.length === 0) {
-                alert('Tidak ada data Lab yang No BPJS-nya cocok dengan data Prolanis.');
-                setIsSaving(false);
-                return;
-            }
-          } else {
-            formattedData = allRows;
-          }
-
-          const payload = {
-            sheetName: type === 'LAB' ? 'Pelayanan' : 'Prolanis',
-            data: formattedData
-          };
-
-          const response = await fetch(SCRIPT_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-            body: JSON.stringify(payload)
-          });
-
-          if(response.ok) {
-            alert(`Data ${type} berhasil disimpan ke Spreadsheet!`);
-          } else {
-            alert(`Terjadi kesalahan jaringan saat menyimpan data ${type}.`);
-          }
-        } catch (error) {
-          console.error('Error saving to sheets:', error);
-          alert('Gagal menyimpan data ke Spreadsheet. Pastikan URL Apps Script sudah benar dan CORS diizinkan.');
-        } finally {
-          setIsSaving(false);
-        }
-      };
-
-      return (
-        <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans p-4 md:p-10">
-          <div className="max-w-7xl mx-auto">
-            <header className="backdrop-blur-xl bg-white/5 border border-white/10 p-8 rounded-[2.5rem] mb-10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
-              <div>
-                <h1 className="text-4xl font-black uppercase tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">SMART DM</h1>
-                <p className="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest">SISTEM MONITORING DAN ANALISIS RAPOR TERKENDALI PASIEN DIABETES MELITUS</p>
-              </div>
-              <div className="flex gap-2 p-1 bg-white/5 rounded-full">
-                <button onClick={() => setActiveTab('LAB')} className={`px-6 py-2 rounded-full font-bold transition-all ${activeTab === 'LAB' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-white/5'}`}>LAB</button>
-                <button onClick={() => setActiveTab('PROLANIS')} className={`px-6 py-2 rounded-full font-bold transition-all ${activeTab === 'PROLANIS' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-white/5'}`}>PROLANIS</button>
-              </div>
-            </header>
-
-            {activeTab === 'LAB' ? (
-               <div className="space-y-8">
-                  <div className="bg-indigo-900/20 p-8 rounded-[2rem] border border-indigo-500/20">
-                    <h3 className="font-bold mb-4 flex items-center gap-2"><Upload size={20}/> Input Data Lab</h3>
-                    <div className="flex flex-col sm:flex-row gap-4">
-                        <label className="bg-indigo-600 px-8 py-4 rounded-xl cursor-pointer hover:bg-indigo-500 transition-all font-bold text-center">
-                            Upload Folder Lab <input type="file" multiple webkitdirectory="true" className="hidden" onChange={(e) => handleUpload(e, 'LAB')} />
-                        </label>
-                        {labFilesData.length > 0 && (
-                            <>
-                              <button onClick={() => saveToGoogleSheets('LAB')} className="flex items-center justify-center gap-2 bg-blue-600 px-8 py-4 rounded-xl font-bold hover:bg-blue-500 transition-all">
-                                <Save size={18} /> Simpan ke Sheets
-                              </button>
-                              <button onClick={() => downloadFile(labFilesData, 'LAB')} className="flex items-center justify-center gap-2 bg-emerald-600 px-8 py-4 rounded-xl font-bold hover:bg-emerald-500 transition-all">
-                                <Download size={18} /> Unduh Rekap
-                              </button>
-                            </>
-                        )}
-                    </div>
-                  </div>
-                  
-                  {labFilesData.map((f, i) => (
-                    <div key={i} className="bg-white/5 p-6 rounded-[2rem] border border-white/10 overflow-x-auto">
-                        <h4 className="font-bold text-indigo-400 mb-4">{f.fileName}</h4>
-                        <table className="w-full text-xs text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-white/10 uppercase text-slate-400">
-                                    <th className="p-3">NIK</th>
-                                    <th className="p-3">Nama Pasien</th>
-                                    <th className="p-3">No BPJS</th>
-                                    {months.map(m => <th key={m} className="p-3 text-center">{m}</th>)}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {f.data.map((row, r) => (
-                                    <tr key={r} className="border-b border-white/5 hover:bg-white/5">
-                                        <td className="p-3 font-bold text-white">{row.Data_Pasien}</td>
-                                        <td className="p-3">{row.Data_D}</td>
-                                        <td className="p-3">{row.Data_R}</td>
-                                        {months.map(m => (
-                                            <td key={m} className="p-3 text-center text-[10px] text-emerald-400 font-bold">{row.Statuses[m] || ""}</td>
-                                        ))}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                  ))}
-               </div>
-            ) : (
-              <div className="space-y-8">
-                <div className="bg-emerald-900/20 p-8 rounded-[2rem] border border-emerald-500/20">
-                    <h3 className="font-bold mb-4 flex items-center gap-2"><Upload size={20}/> Input Data Prolanis</h3>
-                    <div className="flex flex-col sm:flex-row gap-4">
-                      <label className="bg-emerald-600 px-8 py-4 rounded-xl cursor-pointer hover:bg-emerald-500 transition-all font-bold text-center">
-                          Upload Folder Prolanis <input type="file" multiple webkitdirectory="true" className="hidden" onChange={(e) => handleUpload(e, 'PROLANIS')} />
-                      </label>
-                      {prolanisFilesData.length > 0 && (
-                          <button onClick={() => saveToGoogleSheets('PROLANIS')} className="flex items-center justify-center gap-2 bg-blue-600 px-8 py-4 rounded-xl font-bold hover:bg-blue-500 transition-all">
-                            <Save size={18} /> Simpan ke Sheets
-                          </button>
-                      )}
-                    </div>
-                </div>
-                {prolanisFilesData.map((f, i) => (
-                    <div key={i} className="bg-white/5 p-6 rounded-[2rem] border border-white/10 overflow-x-auto">
-                        <h4 className="font-bold text-emerald-400 mb-4">{f.fileName}</h4>
-                        <table className="w-full text-xs text-left border-collapse">
-                            <thead>
-                                <tr className="border-b border-white/10 text-slate-400">
-                                    {['C', 'E', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'X', 'AK'].map(h => <th key={h} className="p-2">{h}</th>)}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {f.data.map((row, r) => (
-                                    <tr key={r} className="border-b border-white/5">{Object.values(row).map((val, v) => <td key={v} className="p-2">{val}</td>)}</tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ))}
-              </div>
-            )}
+          <div className="relative z-10 text-center md:text-left">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800 border border-slate-700 text-xs font-semibold text-slate-400 mb-4 tracking-wider">
+              <Activity size={14} className="text-indigo-400" /> V2.0 AUTOMATED FLOW
+            </div>
+            <h1 className="text-4xl md:text-5xl font-black uppercase tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white via-indigo-200 to-indigo-400">
+              SMART DM
+            </h1>
+            <p className="text-slate-400 text-xs md:text-sm mt-3 font-medium uppercase tracking-widest leading-relaxed max-w-lg">
+              Sistem Monitoring & Analisis Rapor Terkendali Pasien Diabetes Melitus
+            </p>
           </div>
-          {(isProcessing || isSaving) && (
-            <div className="fixed inset-0 bg-slate-950/80 flex items-center justify-center text-2xl font-black z-50">
-              <div className="flex flex-col items-center gap-4">
-                <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-white tracking-widest">{isSaving ? 'MENYIMPAN KE SPREADSHEET...' : 'MEMPROSES DATA...'}</p>
+
+          <div className="relative z-10 flex p-1.5 bg-slate-800/80 backdrop-blur-md rounded-2xl border border-slate-700/50 shadow-inner">
+            <button 
+              onClick={() => setActiveTab('LAB')} 
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all duration-300 ${activeTab === 'LAB' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-900/50' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+            >
+              <Database size={16} /> 1. LAB
+            </button>
+            <button 
+              onClick={() => setActiveTab('PROLANIS')} 
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all duration-300 ${activeTab === 'PROLANIS' ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-900/50' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+            >
+              <FileSpreadsheet size={16} /> 2. PROLANIS
+            </button>
+            <button 
+              onClick={() => setActiveTab('DASHBOARD')} 
+              className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all duration-300 ${activeTab === 'DASHBOARD' ? 'bg-blue-600 text-white shadow-lg shadow-blue-900/50' : 'text-slate-400 hover:text-white hover:bg-slate-700/50'}`}
+            >
+              <LayoutDashboard size={16} /> DASHBOARD
+            </button>
+          </div>
+        </header>
+
+        {/* MAIN CONTENT AREA */}
+        <main className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+          
+          {/* TAB 1: LAB */}
+          {activeTab === 'LAB' && (
+             <div className="space-y-8">
+                <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2rem] shadow-xl relative overflow-hidden text-center">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Langkah 1: Upload Data LAB</h2>
+                  <p className="text-slate-400 mb-8 max-w-lg mx-auto">Silakan unggah folder Lab terlebih dahulu. Setelah selesai, sistem akan otomatis mengarahkan Anda ke tahap selanjutnya.</p>
+                  
+                  <label className="group inline-flex flex-col items-center justify-center border-2 border-dashed border-indigo-500/30 bg-indigo-500/5 hover:bg-indigo-500/10 hover:border-indigo-500/50 transition-all duration-300 rounded-3xl p-12 cursor-pointer w-full max-w-2xl mx-auto">
+                    <div className="bg-indigo-500/20 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform duration-300">
+                      <FolderOpen className="w-10 h-10 text-indigo-400" />
+                    </div>
+                    <div className="inline-flex items-center gap-2 bg-indigo-600 text-white px-8 py-3 rounded-full font-bold text-sm shadow-lg shadow-indigo-900/20">
+                      <Upload size={18} /> Pilih Folder Lab
+                    </div>
+                    <input type="file" multiple webkitdirectory="true" className="hidden" onChange={(e) => handleUpload(e, 'LAB')} />
+                  </label>
+
+                  {labFilesData.length > 0 && (
+                    <div className="mt-8 flex items-center justify-center gap-3 text-emerald-400 font-bold bg-emerald-500/10 p-4 rounded-2xl max-w-md mx-auto border border-emerald-500/20">
+                      <CheckCircle2 size={24} /> {labFilesData.length} File Lab telah diunggah!
+                    </div>
+                  )}
+                </div>
+             </div>
+          )}
+
+          {/* TAB 2: PROLANIS */}
+          {activeTab === 'PROLANIS' && (
+            <div className="space-y-8">
+              <div className="bg-slate-900 border border-slate-800 p-8 rounded-[2rem] shadow-xl relative overflow-hidden text-center">
+                  <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-emerald-500 to-teal-500"></div>
+                  <h2 className="text-2xl font-bold text-white mb-2">Langkah 2: Upload Data PROLANIS</h2>
+                  <p className="text-slate-400 mb-8 max-w-lg mx-auto">Unggah folder Prolanis untuk memfilter data Lab. Data Lab yang BPJS-nya tidak cocok (8 angka terakhir) dengan data Prolanis akan otomatis diabaikan.</p>
+                  
+                  <label className="group inline-flex flex-col items-center justify-center border-2 border-dashed border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 hover:border-emerald-500/50 transition-all duration-300 rounded-3xl p-12 cursor-pointer w-full max-w-2xl mx-auto">
+                    <div className="bg-emerald-500/20 p-4 rounded-full mb-4 group-hover:scale-110 transition-transform duration-300">
+                      <FolderOpen className="w-10 h-10 text-emerald-400" />
+                    </div>
+                    <div className="inline-flex items-center gap-2 bg-emerald-600 text-white px-8 py-3 rounded-full font-bold text-sm shadow-lg shadow-emerald-900/20 transition-colors">
+                      <Upload size={18} /> Pilih Folder Prolanis
+                    </div>
+                    <input type="file" multiple webkitdirectory="true" className="hidden" onChange={(e) => handleUpload(e, 'PROLANIS')} />
+                  </label>
+
+                  {prolanisFilesData.length > 0 && (
+                    <div className="mt-8 flex items-center justify-center gap-3 text-emerald-400 font-bold bg-emerald-500/10 p-4 rounded-2xl max-w-md mx-auto border border-emerald-500/20">
+                      <CheckCircle2 size={24} /> {prolanisFilesData.length} File Prolanis telah diunggah!
+                    </div>
+                  )}
               </div>
             </div>
           )}
-        </div>
-      );
-    };
 
-    const root = createRoot(document.getElementById('root'));
-    root.render(<App />);
-  </script>
-</body>
-</html>
+          {/* TAB 3: DASHBOARD & HASIL FILTER */}
+          {activeTab === 'DASHBOARD' && (
+            <div className="space-y-6">
+              
+              {/* SUMMARY CARDS */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-[1.5rem] flex items-center gap-4">
+                  <div className="p-4 bg-indigo-500/20 rounded-2xl text-indigo-400"><Database size={24} /></div>
+                  <div>
+                    <p className="text-sm text-slate-400 font-semibold">Total Data Lab (Mentah)</p>
+                    <p className="text-2xl font-bold text-white">{getTotalRows(labFilesData)} Baris</p>
+                  </div>
+                </div>
+                <div className="bg-slate-900 border border-slate-800 p-6 rounded-[1.5rem] flex items-center gap-4">
+                  <div className="p-4 bg-emerald-500/20 rounded-2xl text-emerald-400"><FileSpreadsheet size={24} /></div>
+                  <div>
+                    <p className="text-sm text-slate-400 font-semibold">Total Data Prolanis</p>
+                    <p className="text-2xl font-bold text-white">{getTotalRows(prolanisFilesData)} Baris</p>
+                  </div>
+                </div>
+                <div className="bg-gradient-to-br from-blue-900/50 to-indigo-900/50 border border-blue-500/30 p-6 rounded-[1.5rem] flex items-center gap-4">
+                  <div className="p-4 bg-blue-500/20 rounded-2xl text-blue-400"><CheckCircle2 size={24} /></div>
+                  <div>
+                    <p className="text-sm text-blue-200 font-semibold">Data Lab Tervalidasi (Cocok)</p>
+                    <p className="text-3xl font-black text-white">{getTotalRows(filteredLabData)} Baris</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* DOWNLOAD ACTIONS */}
+              <div className="flex flex-col sm:flex-row gap-4 bg-slate-900 p-6 rounded-[1.5rem] border border-slate-800 justify-between items-center">
+                <div className="flex items-center gap-3 text-slate-300">
+                  <Info size={20} className="text-blue-400" />
+                  <p className="text-sm font-medium">Data di bawah ini hanya menampilkan Lab yang No BPJS-nya cocok dengan Prolanis.</p>
+                </div>
+                <div className="flex gap-4 w-full sm:w-auto">
+                  <button 
+                    onClick={() => downloadFile(filteredLabData, 'LAB')} 
+                    disabled={filteredLabData.length === 0}
+                    className="flex-1 flex justify-center items-center gap-2 bg-blue-600 disabled:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold hover:bg-blue-500 transition-all shadow-lg"
+                  >
+                    <Download size={18} /> Rekap Lab (Filter)
+                  </button>
+                  <button 
+                    onClick={() => downloadFile(prolanisFilesData, 'PROLANIS')} 
+                    disabled={prolanisFilesData.length === 0}
+                    className="flex-1 flex justify-center items-center gap-2 bg-emerald-600 disabled:bg-slate-800 text-white px-6 py-3 rounded-xl font-bold hover:bg-emerald-500 transition-all shadow-lg"
+                  >
+                    <Download size={18} /> Prolanis (Split Sheet)
+                  </button>
+                </div>
+              </div>
+
+              {/* FILTERED TABLES */}
+              {filteredLabData.length === 0 ? (
+                <div className="py-20 flex flex-col items-center justify-center text-center opacity-50 bg-slate-900 rounded-[2rem] border border-slate-800">
+                  <Activity className="w-16 h-16 text-slate-600 mb-4" />
+                  <p className="text-lg font-medium text-slate-400">Belum ada data tervalidasi yang dapat ditampilkan.</p>
+                  <p className="text-sm text-slate-500 mt-1">Selesaikan upload Lab & Prolanis terlebih dahulu.</p>
+                </div>
+              ) : (
+                <div className="bg-slate-900 border border-slate-800 rounded-[1.5rem] shadow-xl overflow-hidden animate-in fade-in slide-in-from-bottom-4">
+                  <div className="p-5 border-b border-slate-800 bg-slate-800/30 flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-blue-500/20 rounded-lg"><FileText size={16} className="text-blue-400"/></div>
+                        <h4 className="font-semibold text-slate-200">Hasil Filter Terpadu (Gabungan)</h4>
+                      </div>
+                      <span className="text-xs font-semibold bg-blue-900/50 text-blue-300 px-3 py-1.5 rounded-full border border-blue-500/30">
+                        {getTotalRows(filteredLabData)} Baris Tervalidasi
+                      </span>
+                  </div>
+                  <div className="overflow-x-auto max-h-[500px] overflow-y-auto">
+                      <table className="w-full text-xs text-left">
+                          <thead className="bg-slate-900/90 text-slate-400 uppercase tracking-wider font-semibold border-b border-slate-800 sticky top-0 backdrop-blur-md z-10">
+                              <tr>
+                                  <th className="p-4 whitespace-nowrap">NIK</th>
+                                  <th className="p-4 whitespace-nowrap">Nama Pasien</th>
+                                  <th className="p-4 whitespace-nowrap">No BPJS (Lab)</th>
+                                  {months.map(m => <th key={m} className="p-4 text-center">{m.substring(0,3)}</th>)}
+                              </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-800/50">
+                              {/* Render semua baris dari semua file yang ada di dalam state filteredLabData */}
+                              {filteredLabData.flatMap(f => f.data).map((row, r) => (
+                                  <tr key={r} className="hover:bg-slate-800/40 transition-colors">
+                                      <td className="p-4 font-semibold text-slate-300">{row.Data_Pasien}</td>
+                                      <td className="p-4 text-slate-400">{row.Data_D}</td>
+                                      <td className="p-4 text-slate-300 font-mono bg-slate-800/50">{row.Data_R}</td>
+                                      {months.map(m => (
+                                          <td key={m} className="p-4 text-center">
+                                            {/* Cukup panggil row[m] karena data sudah dimerge */}
+                                            {row[m] ? (
+                                              <span className="inline-block px-2 py-1 bg-indigo-500/10 text-indigo-300 rounded border border-indigo-500/20 truncate max-w-[80px]" title={row[m]}>
+                                                {row[m]}
+                                              </span>
+                                            ) : (
+                                              <span className="text-slate-700">-</span>
+                                            )}
+                                          </td>
+                                      ))}
+                                  </tr>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </main>
+      </div>
+
+      {/* LOADING OVERLAY */}
+      {isProcessing && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center text-white">
+          <Loader2 className="w-16 h-16 text-indigo-500 animate-spin mb-6" />
+          <h2 className="text-2xl font-black tracking-widest uppercase bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-emerald-400">
+            MEMPROSES DATA
+          </h2>
+          <p className="text-slate-400 mt-2 text-sm">Mohon tunggu sebentar, sistem sedang menyesuaikan file...</p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default App;
