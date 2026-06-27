@@ -4,7 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>SMART DM - Sistem Monitoring</title>
+  
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Import Map untuk React dan Lucide Icons -->
   <script type="importmap">
     {
       "imports": {
@@ -15,6 +19,8 @@
       }
     }
   </script>
+  
+  <!-- Babel compiler untuk menjalankan JSX di browser -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
 </head>
 <body class="bg-[#0f172a]">
@@ -23,8 +29,9 @@
   <script type="text/babel" data-type="module">
     import React, { useState, useEffect } from 'react';
     import { createRoot } from 'react-dom/client';
-    import { Upload, Download, Save } from 'lucide-react';
+    import { Upload, FileSpreadsheet, Download, FileText, ListFilter, Sparkles, ShieldCheck, Zap, Trash2, Files, Save } from 'lucide-react';
 
+    // URL WEB APP GOOGLE APPS SCRIPT 
     const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwGAEysRr9D4XPyANMMkqB4uLy-YfIzHfNsDLGYXkkqf8cxUqusFqhz7tyUmubllE_H/exec'; 
 
     const App = () => {
@@ -32,6 +39,7 @@
       const [prolanisFilesData, setProlanisFilesData] = useState([]);
       const [isProcessing, setIsProcessing] = useState(false);
       const [isSaving, setIsSaving] = useState(false);
+      const [xlsxLoaded, setXlsxLoaded] = useState(false);
       const [activeTab, setActiveTab] = useState('LAB'); 
 
       const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
@@ -40,100 +48,356 @@
         const script = document.createElement('script');
         script.src = "https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js";
         script.async = true;
+        script.onload = () => setXlsxLoaded(true);
         document.head.appendChild(script);
       }, []);
 
-      const getCellValue = (ws, r, c) => {
-        const cell = ws[window.XLSX.utils.encode_cell({ r, c })];
-        return cell ? (cell.w || String(cell.v || "")) : "";
+      const getMonthName = (value) => {
+        if (!value) return "-";
+        let monthIndex = -1;
+        const strVal = String(value).trim();
+        const parts = strVal.split(/[-./]/);
+        if (parts.length >= 2) {
+          const mPart = parseInt(parts[1], 10);
+          if (mPart >= 1 && mPart <= 12) monthIndex = mPart - 1;
+        }
+        if (monthIndex === -1) {
+          const cleanDigits = strVal.replace(/[^0-9]/g, '');
+          if (cleanDigits.length === 6) {
+            const mPart = parseInt(cleanDigits.substring(2, 4), 10);
+            if (mPart >= 1 && mPart <= 12) monthIndex = mPart - 1;
+          }
+        }
+        if (monthIndex === -1) {
+          let date;
+          if (value instanceof Date) date = value;
+          else if (typeof value === 'number') date = new Date(Math.round((value - 25569) * 86400 * 1000));
+          else { const parsed = new Date(value); if (!isNaN(parsed.getTime())) date = parsed; }
+          if (date && !isNaN(date.getTime())) monthIndex = date.getMonth();
+        }
+        return monthIndex >= 0 && monthIndex <= 11 ? months[monthIndex] : strVal || "-";
+      };
+
+      const getCellValue = (worksheet, r, c) => {
+        const XLSX = window.XLSX;
+        if (!XLSX) return "";
+        if (worksheet['!merges']) {
+          for (const merge of worksheet['!merges']) {
+            if (r >= merge.s.r && r <= merge.e.r && c >= merge.s.c && c <= merge.e.c) {
+              const firstCell = worksheet[XLSX.utils.encode_cell({ r: merge.s.r, c: merge.s.c })];
+              return firstCell ? (firstCell.w || firstCell.v || "") : "";
+            }
+          }
+        }
+        const cell = worksheet[XLSX.utils.encode_cell({ r, c })];
+        return cell ? (cell.w || (cell.v !== undefined ? String(cell.v) : "")) : "";
+      };
+
+      const processLabFile = (file) => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const workbook = window.XLSX.read(data, { type: 'array', cellDates: true, cellText: true });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const range = window.XLSX.utils.decode_range(sheet['!ref']);
+            
+            // Menggunakan objek (hash map) untuk menghapus duplikat berdasarkan No BPJS
+            const grouped = {};
+            
+            for (let r = 10; r <= range.e.r; r += 2) {
+              const rawB = getCellValue(sheet, r, 1);
+              let rawF = getCellValue(sheet, r, 5) || getCellValue(sheet, r, 4) || getCellValue(sheet, r, 6);
+              const rawV = getCellValue(sheet, r, 21);
+              const rawD = getCellValue(sheet, r, 3);
+              const rawR = getCellValue(sheet, r, 17);
+              
+              if (rawB || rawF || rawV) {
+                // Gunakan No BPJS sebagai Key utama, jika kosong gunakan NIK atau Baris
+                const bpjsKey = String(rawR && String(rawR).trim() !== "" ? rawR : (rawF || `row_${r}`)).trim();
+                
+                if (!grouped[bpjsKey]) {
+                   grouped[bpjsKey] = { 
+                     'Baris': r + 1, 
+                     'Data_Pasien': rawF || "-", 
+                     'Data_D': rawD || "-", 
+                     'Data_R': rawR || "-", 
+                     'Statuses': {} 
+                   };
+                }
+                
+                const bulanName = getMonthName(rawB);
+                if (bulanName !== "-") {
+                   // Menyatukan data capaian bulanan ke dalam satu record No BPJS
+                   grouped[bpjsKey].Statuses[bulanName] = rawV || "-";
+                }
+              }
+            }
+            resolve({ fileName: file.name, data: Object.values(grouped) });
+          };
+          reader.readAsArrayBuffer(file);
+        });
+      };
+
+      const processProlanisFile = (file) => {
+        return new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onload = (e) => {
+            const data = new Uint8Array(e.target.result);
+            const workbook = window.XLSX.read(data, { type: 'array', cellDates: true, cellText: true });
+            const sheet = workbook.Sheets[workbook.SheetNames[0]];
+            const range = window.XLSX.utils.decode_range(sheet['!ref']);
+            const results = [];
+            for (let r = 13; r <= range.e.r; r++) {
+                results.push({
+                    C: getCellValue(sheet, r, 2), E: getCellValue(sheet, r, 4), H: getCellValue(sheet, r, 7),
+                    I: getCellValue(sheet, r, 8), J: getCellValue(sheet, r, 9), K: getCellValue(sheet, r, 10),
+                    L: getCellValue(sheet, r, 11), M: getCellValue(sheet, r, 12), N: getCellValue(sheet, r, 13),
+                    O: getCellValue(sheet, r, 14), X: getCellValue(sheet, r, 23), AK: getCellValue(sheet, r, 36)
+                });
+            }
+            resolve({ fileName: file.name, data: results });
+          };
+          reader.readAsArrayBuffer(file);
+        });
       };
 
       const handleUpload = async (e, type) => {
         const files = Array.from(e.target.files);
         if (!files.length) return;
         setIsProcessing(true);
-        
-        const process = async (file) => {
-          const buffer = await file.arrayBuffer();
-          const wb = window.XLSX.read(buffer, { type: 'array' });
-          const sheet = wb.Sheets[wb.SheetNames[0]];
-          const range = window.XLSX.utils.decode_range(sheet['!ref']);
-          const data = [];
-          
-          if (type === 'LAB') {
-            for (let r = 10; r <= range.e.r; r += 2) {
-              const bulan = getCellValue(sheet, r, 1);
-              const nama = getCellValue(sheet, r, 5) || getCellValue(sheet, r, 4);
-              const status = getCellValue(sheet, r, 21);
-              const bpjs = getCellValue(sheet, r, 17);
-              if (bpjs) data.push({ bulan, nama, status, bpjs });
-            }
-          } else {
-            for (let r = 13; r <= range.e.r; r++) {
-              data.push({ K: getCellValue(sheet, r, 9) }); // Kolom K
-            }
-          }
-          return { fileName: file.name, data };
-        };
-
-        const results = await Promise.all(files.map(process));
-        if (type === 'LAB') setLabFilesData(prev => [...prev, ...results]);
-        else setProlanisFilesData(prev => [...prev, ...results]);
-        setIsProcessing(false);
+        try {
+          const processor = type === 'LAB' ? processLabFile : processProlanisFile;
+          const results = await Promise.all(files.filter(f => f.name.match(/\.(xlsx|xls|csv)$/i)).map(processor));
+          if (type === 'LAB') setLabFilesData(prev => [...prev, ...results]);
+          else setProlanisFilesData(prev => [...prev, ...results]);
+        } catch (err) { console.error(err); } finally { setIsProcessing(false); }
       };
 
-      const saveToGoogleSheets = async () => {
+      const downloadFile = (data, type) => {
+        const XLSX = window.XLSX;
+        if (!XLSX) return;
+        const allRows = data.flatMap(f => f.data);
+        let excelData = [];
+        
+        if(type === 'LAB'){
+            // Lakukan penggabungan global memastikan hanya ada 1 data per No BPJS 
+            // untuk seluruh file yang diunggah
+            const mergedGlobal = {};
+            allRows.forEach(row => {
+                const key = String(row.Data_R !== "-" ? row.Data_R : row.Data_Pasien).trim();
+                if (!mergedGlobal[key]) {
+                    mergedGlobal[key] = { ...row, Statuses: { ...row.Statuses } };
+                } else {
+                    Object.assign(mergedGlobal[key].Statuses, row.Statuses);
+                }
+            });
+            
+            excelData = Object.values(mergedGlobal).map(row => {
+                const outputRow = { 'Baris': row.Baris, 'NIK': row.Data_Pasien, 'Nama Pasien': row.Data_D, 'No BPJS': row.Data_R };
+                months.forEach(m => outputRow[m] = row.Statuses[m] || "");
+                return outputRow;
+            });
+        } else {
+            excelData = allRows;
+        }
+        
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.json_to_sheet(excelData, { origin: "A2" });
+        XLSX.utils.book_append_sheet(wb, ws, "Rekap");
+        XLSX.writeFile(wb, `file DM step 1.xlsx`);
+      };
+
+      const saveToGoogleSheets = async (type) => {
+        if(SCRIPT_URL === 'URL_WEB_APP_GOOGLE_SCRIPT_ANDA_DI_SINI' || SCRIPT_URL === '') {
+          alert('Mohon masukkan URL Google Apps Script Anda terlebih dahulu di variabel SCRIPT_URL pada kode aplikasi.');
+          return;
+        }
+
+        const dataToSave = type === 'LAB' ? labFilesData : prolanisFilesData;
+        if (dataToSave.length === 0) return;
+
+        if (type === 'LAB' && prolanisFilesData.length === 0) {
+          alert('Mohon unggah data Prolanis terlebih dahulu untuk mencocokkan No BPJS.');
+          return;
+        }
+
         setIsSaving(true);
-        const validBpjs = new Set(prolanisFilesData.flatMap(f => f.data.map(d => String(d.K).trim())));
-        const merged = {};
-
-        labFilesData.flatMap(f => f.data).forEach(row => {
-          const bpjs = String(row.bpjs).trim();
-          if (!merged[bpjs]) merged[bpjs] = { bpjs, nama: row.nama, status: {} };
-          merged[bpjs].status[row.bulan] = row.status;
-        });
-
-        const finalData = Object.values(merged)
-          .filter(r => validBpjs.has(r.bpjs))
-          .map(r => ({ 'No BPJS': r.bpjs, 'Nama': r.nama, ...r.status }));
-
         try {
-          await fetch(SCRIPT_URL, {
+          const allRows = dataToSave.flatMap(f => f.data);
+          let formattedData = [];
+          
+          if (type === 'LAB') {
+            const validBpjsSet = new Set();
+            prolanisFilesData.forEach(f => {
+                f.data.forEach(r => {
+                    if (r.K) validBpjsSet.add(String(r.K).trim());
+                });
+            });
+
+            const mergedGlobal = {};
+            allRows.forEach(row => {
+                const key = String(row.Data_R !== "-" ? row.Data_R : row.Data_Pasien).trim();
+                if (!mergedGlobal[key]) {
+                    mergedGlobal[key] = { ...row, Statuses: { ...row.Statuses } };
+                } else {
+                    Object.assign(mergedGlobal[key].Statuses, row.Statuses);
+                }
+            });
+            
+            formattedData = Object.values(mergedGlobal)
+                .filter(row => validBpjsSet.has(String(row.Data_R).trim()))
+                .map(row => {
+                const outputRow = { 'Baris': row.Baris, 'NIK': row.Data_Pasien, 'Nama Pasien': row.Data_D, 'No BPJS': row.Data_R };
+                months.forEach(m => outputRow[m] = row.Statuses[m] || "");
+                return outputRow;
+            });
+
+            if (formattedData.length === 0) {
+                alert('Tidak ada data Lab yang No BPJS-nya cocok dengan data Prolanis.');
+                setIsSaving(false);
+                return;
+            }
+          } else {
+            formattedData = allRows;
+          }
+
+          const payload = {
+            sheetName: type === 'LAB' ? 'Pelayanan' : 'Prolanis',
+            data: formattedData
+          };
+
+          const response = await fetch(SCRIPT_URL, {
             method: 'POST',
-            mode: 'no-cors',
-            body: JSON.stringify({ sheetName: 'Pelayanan', data: finalData })
+            headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+            body: JSON.stringify(payload)
           });
-          alert("Data berhasil dikirim!");
-        } catch (e) { alert("Gagal kirim data"); }
-        setIsSaving(false);
+
+          if(response.ok) {
+            alert(`Data ${type} berhasil disimpan ke Spreadsheet!`);
+          } else {
+            alert(`Terjadi kesalahan jaringan saat menyimpan data ${type}.`);
+          }
+        } catch (error) {
+          console.error('Error saving to sheets:', error);
+          alert('Gagal menyimpan data ke Spreadsheet. Pastikan URL Apps Script sudah benar dan CORS diizinkan.');
+        } finally {
+          setIsSaving(false);
+        }
       };
 
       return (
-        <div className="min-h-screen bg-[#0f172a] text-white p-10">
-          <header className="flex justify-between items-center mb-10">
-            <h1 className="text-3xl font-black">SMART DM</h1>
-            <div className="flex gap-2">
-              <button onClick={() => setActiveTab('LAB')} className="bg-indigo-600 px-4 py-2 rounded-lg">LAB</button>
-              <button onClick={() => setActiveTab('PROLANIS')} className="bg-emerald-600 px-4 py-2 rounded-lg">PROLANIS</button>
+        <div className="min-h-screen bg-[#0f172a] text-slate-200 font-sans p-4 md:p-10">
+          <div className="max-w-7xl mx-auto">
+            <header className="backdrop-blur-xl bg-white/5 border border-white/10 p-8 rounded-[2.5rem] mb-10 flex flex-col md:flex-row items-center justify-between gap-6 shadow-2xl">
+              <div>
+                <h1 className="text-4xl font-black uppercase tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-white to-slate-400">SMART DM</h1>
+                <p className="text-slate-400 text-xs mt-2 font-bold uppercase tracking-widest">SISTEM MONITORING DAN ANALISIS RAPOR TERKENDALI PASIEN DIABETES MELITUS</p>
+              </div>
+              <div className="flex gap-2 p-1 bg-white/5 rounded-full">
+                <button onClick={() => setActiveTab('LAB')} className={`px-6 py-2 rounded-full font-bold transition-all ${activeTab === 'LAB' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-white/5'}`}>LAB</button>
+                <button onClick={() => setActiveTab('PROLANIS')} className={`px-6 py-2 rounded-full font-bold transition-all ${activeTab === 'PROLANIS' ? 'bg-indigo-600 shadow-lg' : 'hover:bg-white/5'}`}>PROLANIS</button>
+              </div>
+            </header>
+
+            {activeTab === 'LAB' ? (
+               <div className="space-y-8">
+                  <div className="bg-indigo-900/20 p-8 rounded-[2rem] border border-indigo-500/20">
+                    <h3 className="font-bold mb-4 flex items-center gap-2"><Upload size={20}/> Input Data Lab</h3>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                        <label className="bg-indigo-600 px-8 py-4 rounded-xl cursor-pointer hover:bg-indigo-500 transition-all font-bold text-center">
+                            Upload Folder Lab <input type="file" multiple webkitdirectory="true" className="hidden" onChange={(e) => handleUpload(e, 'LAB')} />
+                        </label>
+                        {labFilesData.length > 0 && (
+                            <>
+                              <button onClick={() => saveToGoogleSheets('LAB')} className="flex items-center justify-center gap-2 bg-blue-600 px-8 py-4 rounded-xl font-bold hover:bg-blue-500 transition-all">
+                                <Save size={18} /> Simpan ke Sheets
+                              </button>
+                              <button onClick={() => downloadFile(labFilesData, 'LAB')} className="flex items-center justify-center gap-2 bg-emerald-600 px-8 py-4 rounded-xl font-bold hover:bg-emerald-500 transition-all">
+                                <Download size={18} /> Unduh Rekap
+                              </button>
+                            </>
+                        )}
+                    </div>
+                  </div>
+                  
+                  {labFilesData.map((f, i) => (
+                    <div key={i} className="bg-white/5 p-6 rounded-[2rem] border border-white/10 overflow-x-auto">
+                        <h4 className="font-bold text-indigo-400 mb-4">{f.fileName}</h4>
+                        <table className="w-full text-xs text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-white/10 uppercase text-slate-400">
+                                    <th className="p-3">NIK</th>
+                                    <th className="p-3">Nama Pasien</th>
+                                    <th className="p-3">No BPJS</th>
+                                    {months.map(m => <th key={m} className="p-3 text-center">{m}</th>)}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {f.data.map((row, r) => (
+                                    <tr key={r} className="border-b border-white/5 hover:bg-white/5">
+                                        <td className="p-3 font-bold text-white">{row.Data_Pasien}</td>
+                                        <td className="p-3">{row.Data_D}</td>
+                                        <td className="p-3">{row.Data_R}</td>
+                                        {months.map(m => (
+                                            <td key={m} className="p-3 text-center text-[10px] text-emerald-400 font-bold">{row.Statuses[m] || ""}</td>
+                                        ))}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                  ))}
+               </div>
+            ) : (
+              <div className="space-y-8">
+                <div className="bg-emerald-900/20 p-8 rounded-[2rem] border border-emerald-500/20">
+                    <h3 className="font-bold mb-4 flex items-center gap-2"><Upload size={20}/> Input Data Prolanis</h3>
+                    <div className="flex flex-col sm:flex-row gap-4">
+                      <label className="bg-emerald-600 px-8 py-4 rounded-xl cursor-pointer hover:bg-emerald-500 transition-all font-bold text-center">
+                          Upload Folder Prolanis <input type="file" multiple webkitdirectory="true" className="hidden" onChange={(e) => handleUpload(e, 'PROLANIS')} />
+                      </label>
+                      {prolanisFilesData.length > 0 && (
+                          <button onClick={() => saveToGoogleSheets('PROLANIS')} className="flex items-center justify-center gap-2 bg-blue-600 px-8 py-4 rounded-xl font-bold hover:bg-blue-500 transition-all">
+                            <Save size={18} /> Simpan ke Sheets
+                          </button>
+                      )}
+                    </div>
+                </div>
+                {prolanisFilesData.map((f, i) => (
+                    <div key={i} className="bg-white/5 p-6 rounded-[2rem] border border-white/10 overflow-x-auto">
+                        <h4 className="font-bold text-emerald-400 mb-4">{f.fileName}</h4>
+                        <table className="w-full text-xs text-left border-collapse">
+                            <thead>
+                                <tr className="border-b border-white/10 text-slate-400">
+                                    {['C', 'E', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'X', 'AK'].map(h => <th key={h} className="p-2">{h}</th>)}
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {f.data.map((row, r) => (
+                                    <tr key={r} className="border-b border-white/5">{Object.values(row).map((val, v) => <td key={v} className="p-2">{val}</td>)}</tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                ))}
+              </div>
+            )}
+          </div>
+          {(isProcessing || isSaving) && (
+            <div className="fixed inset-0 bg-slate-950/80 flex items-center justify-center text-2xl font-black z-50">
+              <div className="flex flex-col items-center gap-4">
+                <div className="w-16 h-16 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="text-white tracking-widest">{isSaving ? 'MENYIMPAN KE SPREADSHEET...' : 'MEMPROSES DATA...'}</p>
+              </div>
             </div>
-          </header>
-          
-          {activeTab === 'LAB' ? (
-            <div className="space-y-4">
-              <input type="file" multiple webkitdirectory="true" onChange={(e) => handleUpload(e, 'LAB')} className="bg-white/10 p-4 rounded-xl"/>
-              <button onClick={saveToGoogleSheets} className="bg-blue-600 px-6 py-4 rounded-xl flex items-center gap-2">
-                <Save/> Simpan ke Sheets
-              </button>
-            </div>
-          ) : (
-            <input type="file" multiple webkitdirectory="true" onChange={(e) => handleUpload(e, 'PROLANIS')} className="bg-white/10 p-4 rounded-xl"/>
           )}
-          
-          {(isProcessing || isSaving) && <div className="fixed inset-0 bg-black/80 flex items-center justify-center">Loading...</div>}
         </div>
       );
     };
-    createRoot(document.getElementById('root')).render(<App />);
+
+    const root = createRoot(document.getElementById('root'));
+    root.render(<App />);
   </script>
 </body>
 </html>
